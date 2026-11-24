@@ -50,5 +50,30 @@ Aplikasi ini adalah situs statis Vite. Netlify membangun proyek dengan `npm run 
 
 ## Yang perlu diketahui
 - Paket gratis Netlify memiliki batas kuota dan ketentuan yang dapat berubah. Periksa batas terbaru pada halaman pricing Netlify sebelum dipakai.
-- Saat ini data aplikasi dan pesan demo disimpan di `localStorage` browser. Deploy membuat webapp dapat dibuka melalui internet, tetapi **tidak** menyinkronkan data antara anggota tim atau perangkat. Login, database bersama, dan chat real-time memerlukan layanan backend tersendiri.
-- Alamat Netlify baru bisa dibuat setelah Anda masuk ke akun Netlify dan membuat/menghubungkan site. Jangan bagikan data sensitif melalui versi demo ini.
+- Data aplikasi disimpan di database Supabase (gratis hingga 500 MB) + fallback `localStorage` saat offline. Semua tim bisa akses data yang sama dari perangkat mana pun.
+- Alamat Netlify baru bisa dibuat setelah Anda masuk ke akun Netlify dan membuat/menghubungkan site.
+
+## Setup Supabase (database + backend)
+Aplikasi menggunakan Supabase untuk database bersama. Langkah:
+
+1. **Daftar di [supabase.com](https://supabase.com/)** (gratis, pakai Google/GitHub).
+2. **Buat project baru** (pilih region terdekat, misal `Singapore` atau `Tokyo`).
+3. **Jalankan skema database**: buka tab **SQL Editor**, paste isi `supabase/schema.sql`, klik **Run**.
+4. **Ambil credentials**: masuk ke **Settings > API**, catat:
+   - `Project URL` (format `https://xxx.supabase.co`)
+   - `anon public key` (berawalan `eyJ...`)
+5. **Set env vars di Netlify**:
+   - Buka [app.netlify.com](https://app.netlify.com/) > pilih site Anda.
+   - **Site configuration** > **Environment variables** > tambahkan:
+     - `VITE_SUPABASE_URL` = Project URL
+     - `VITE_SUPABASE_ANON_KEY` = anon key
+   - Klik **Redeploy** atau push ulang untuk build baru.
+6. **(Opsional) Aktifkan Auth**: Supabase Dashboard > Authentication > pilih metode login (email, Google, dll).
+
+### Mode lokal (tanpa Supabase)
+Jika `VITE_SUPABASE_URL` belum di-set, aplikasi fallback ke `localStorage` browser. Data tidak sinkron antar perangkat.
+
+## Struktur backend
+- `supabase/schema.sql` — skema database + RLS policy
+- `src/lib/supabase.js` — client Supabase
+- `src/lib/api.js` — operasi CRUD (tasks, posts, projects, sales, messages)

@@ -1,4 +1,6 @@
 import './style.css';
+import { isConfigured, supabase } from './lib/supabase.js';
+import * as api from './lib/api.js';
 
 const icons = {
   overview: '<path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"/>',
@@ -51,13 +53,11 @@ const defaultProjects = [
 function getStored(key, fallback) {
   try { const parsed = JSON.parse(localStorage.getItem(key)); return parsed ?? fallback; } catch { return fallback; }
 }
-let tasks = getStored('marketing-desk-tasks', defaultTasks);
-let posts = getStored('marketing-desk-posts', defaultPosts);
-let projects = getStored('marketing-desk-projects', defaultProjects);
-let sales = getStored('marketing-desk-sales', []);
-let messages = getStored('marketing-desk-chat', [
-  { name: 'Ruang tim', initials: 'RT', text: 'Catatan demo: ruang ini siap dipakai untuk diskusi tim setelah data nyata ditambahkan.', time: 'Contoh' },
-]);
+let tasks = defaultTasks;
+let posts = defaultPosts;
+let projects = defaultProjects;
+let sales = [];
+let messages = [{ name: 'Ruang tim', initials: 'RT', text: 'Catatan demo: ruang ini siap dipakai untuk diskusi tim setelah data nyata ditambahkan.', time: 'Contoh' }];
 let activeSection = location.hash.slice(1) in sections ? location.hash.slice(1) : 'overview';
 let activeFilter = 'Semua';
 let searchText = '';
@@ -67,13 +67,34 @@ let systemMessage = '';
 let motionPaused = getStored('marketing-desk-motion-paused', false);
 let featureTransition = false;
 
-const store = () => {
+async function store() {
+  if (isConfigured) {
+    // Simpan ke Supabase. Data di-load ulang saat app start.
+  }
+  // Fallback lokal tetap aktif saat offline / Supabase belum di-setup
   localStorage.setItem('marketing-desk-tasks', JSON.stringify(tasks));
   localStorage.setItem('marketing-desk-posts', JSON.stringify(posts));
   localStorage.setItem('marketing-desk-projects', JSON.stringify(projects));
   localStorage.setItem('marketing-desk-sales', JSON.stringify(sales));
   localStorage.setItem('marketing-desk-chat', JSON.stringify(messages));
-};
+}
+
+async function loadFromCloud() {
+  if (!isConfigured) return;
+  try {
+    const data = await api.loadAll();
+    if (data) {
+      tasks = data.tasks.length ? data.tasks : tasks;
+      posts = data.posts.length ? data.posts : posts;
+      projects = data.projects.length ? data.projects : projects;
+      sales = data.sales.length ? data.sales : sales;
+      messages = data.messages.length ? data.messages : messages;
+      render();
+    }
+  } catch (err) {
+    console.warn('[cloud] load gagal, pakai data lokal', err);
+  }
+}
 
 function sidebarMarkup() {
   return `<aside class="sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}" aria-label="Navigasi utama">
@@ -292,11 +313,27 @@ document.addEventListener('change', event => {
 function saveModalForm(form) {
   const values = Object.fromEntries(new FormData(form));
   const title = document.querySelector('#dialog-title').textContent;
-  if (title === 'Tambah tugas') tasks.unshift({ id: Date.now(), title: values.title, project: values.project, due: formatDateLabel(values.due), status: values.status, done: false });
-  else if (title === 'Tambah konten') posts.unshift({ id: Date.now(), date: values.date.replace(/\D/g, '').slice(0, 2) || '--', month: values.date.replace(/[0-9\s]/g, '').slice(0, 3).toUpperCase() || 'TBD', channel: values.channel, title: values.title, status: values.status, color: ['coral', 'olive', 'sand'][posts.length % 3] });
-  else if (title === 'Buat proyek') projects.unshift({ name: values.name, label: values.label, progress: 0, color: ['coral', 'olive', 'sand'][projects.length % 3], due: values.due });
-  else if (title === 'Catatan sales') sales.unshift({name:values.name,followup:values.followup});
-  store(); document.querySelector('.dialog-scrim')?.remove(); render(); showToast('Data tersimpan di browser ini.');
+  if (title === 'Tambah tugas') {
+    const task = { id: Date.now(), title: values.title, project: values.project, due: formatDateLabel(values.due), status: values.status, done: false };
+    tasks.unshift(task);
+    api.addTask(task).catch(err => console.warn('[cloud] addTask gagal', err));
+  }
+  else if (title === 'Tambah konten') {
+    const post = { id: Date.now(), date: values.date.replace(/\D/g, '').slice(0, 2) || '--', month: values.date.replace(/[0-9\s]/g, '').slice(0, 3).toUpperCase() || 'TBD', channel: values.channel, title: values.title, status: values.status, color: ['coral', 'olive', 'sand'][posts.length % 3] };
+    posts.unshift(post);
+    api.addPost(post).catch(err => console.warn('[cloud] addPost gagal', err));
+  }
+  else if (title === 'Buat proyek') {
+    const project = { name: values.name, label: values.label, progress: 0, color: ['coral', 'olive', 'sand'][projects.length % 3], due: values.due };
+    projects.unshift(project);
+    api.addProject(project).catch(err => console.warn('[cloud] addProject gagal', err));
+  }
+  else if (title === 'Catatan sales') {
+    const sale = { name: values.name, followup: values.followup };
+    sales.unshift(sale);
+    api.addSale(sale).catch(err => console.warn('[cloud] addSale gagal', err));
+  }
+  store(); document.querySelector('.dialog-scrim')?.remove(); render(); showToast('Data disimpan.');
 }
 document.addEventListener('submit', event => {
   if (event.target.id === 'modal-form') { event.preventDefault(); saveModalForm(event.target); }
@@ -314,3 +351,4 @@ if (localStorage.getItem('marketing-desk-theme') === 'dark') document.body.class
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 motionPreference.addEventListener('change', () => render());
 render();
+loadFromCloud();

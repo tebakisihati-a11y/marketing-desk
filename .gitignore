@@ -1,2 +1,5 @@
 # Local Netlify folder
 .netlify
+
+# Env lokal (Supabase credentials)
+.env.local
